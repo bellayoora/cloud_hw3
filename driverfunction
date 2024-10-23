@@ -1,0 +1,45 @@
+import boto3
+import time
+import urllib3
+
+s3_client = boto3.client('s3')
+lambda_client = boto3.client('lambda')
+
+bucket_name = 'bellachenassignment3'
+
+def create_object(object_name, content):
+    s3_client.put_object(Bucket=bucket_name, Key=object_name, Body=content)
+
+def update_object(object_name, content):
+    s3_client.put_object(Bucket=bucket_name, Key=object_name, Body=content)
+
+def delete_object(object_name):
+    s3_client.delete_object(Bucket=bucket_name, Key=object_name)
+
+def call_plotting_api():
+    api_url = 'https://5r7q8mfqyb.execute-api.us-east-1.amazonaws.com/default/plotting_function'
+    
+    http = urllib3.PoolManager()
+    response = http.request('POST', api_url)
+    
+    print("Invoked Plotting API:", response.status)
+
+def lambda_handler(event, context):
+    create_object('assignment1.txt', 'Empty Assignment 1')
+    time.sleep(2)
+
+    update_object('assignment1.txt', 'Empty Assignment 2222222222')
+    time.sleep(2)
+
+    delete_object('assignment1.txt')
+    time.sleep(2)
+
+    create_object('assignment2.txt', '33')
+    time.sleep(2)
+    
+    call_plotting_api()
+
+    return {
+        'statusCode': 200,
+        'body': 'Driver Lambda executed successfully.'
+    }
