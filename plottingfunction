@@ -1,0 +1,88 @@
+import boto3
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+
+# Initialize DynamoDB and S3 clients
+dynamodb = boto3.resource('dynamodb')
+s3_client = boto3.client('s3')
+
+# Specify table and bucket names
+table_name = 'S3_object_size_history'
+bucket_name = 'bellachenassignment3'
+plot_bucket = 'plotbucket101'
+
+def fetch_recent_size_data():
+    # Query DynamoDB for size history from the last 10 seconds
+    table = dynamodb.Table(table_name)
+    current_time = datetime.utcnow()
+    ten_seconds_prior = int((current_time - timedelta(seconds=10)).timestamp())
+    
+    response = table.query(
+        KeyConditionExpression=boto3.dynamodb.conditions.Key('BucketName').eq(bucket_name) & 
+        boto3.dynamodb.conditions.Key('Timestamp').between(ten_seconds_prior, int(current_time.timestamp()))
+    )
+    return response['Items']
+
+def fetch_max_size():
+    # Query DynamoDB to find the maximum size of the bucket
+    table = dynamodb.Table(table_name)
+    response = table.scan(
+        ProjectionExpression='TotalSize',
+        FilterExpression=boto3.dynamodb.conditions.Key('BucketName').eq(bucket_name)
+    )
+    
+    if not response['Items']: 
+        return 0  
+    
+    max_size_value = max(item['TotalSize'] for item in response['Items'])
+    return max_size_value
+
+def create_plot(size_history, max_size_value):
+    # Extract timestamps and sizes for plotting
+    timestamps = [item['TimestampStr'] for item in size_history]
+    sizes = [item['TotalSize'] for item in size_history]
+    
+    # Create the plot with new style settings
+    plt.figure(figsize=(10, 6))
+    plt.plot(timestamps, sizes, color='royalblue', linestyle=':', marker='o', markersize=8, label='Bucket Size', linewidth=2)
+    plt.axhline(y=max_size_value, color='firebrick', linestyle='-.', label='Max Size', linewidth=2.5)
+    
+    # Customize the plot background and grid
+    plt.gca().set_facecolor('#f0f0f0')  # Light gray background
+    plt.grid(color='gray', linestyle='--', linewidth=0.5)
+
+    # Add labels and title with custom fonts
+    plt.xlabel('Timestamp', fontsize=14, fontweight='bold', color='darkblue')
+    plt.ylabel('Size (Bytes)', fontsize=14, fontweight='bold', color='darkblue')
+    plt.title('S3 Bucket Size History (Last 10 Seconds)', fontsize=16, fontweight='bold', color='darkgreen')
+
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=45, fontsize=12)
+    plt.yticks(fontsize=12)
+
+    # Adjust layout and add a legend
+    plt.tight_layout()       # Prevent label overlap
+    plt.legend(fontsize=12)
+
+    # Save the plot locally
+    plt.savefig('/tmp/plot.png') 
+
+
+def upload_plot_to_s3():
+    # Upload the saved plot to S3
+    with open('/tmp/plot.png', 'rb') as file:
+        s3_client.put_object(Bucket=plot_bucket, Key='plot.png', Body=file)
+
+def lambda_handler(event, context):
+    # Fetch size data and maximum size from DynamoDB
+    size_history = fetch_recent_size_data()
+    max_size_value = fetch_max_size()
+    
+    # Create and upload the plot
+    create_plot(size_history, max_size_value)
+    upload_plot_to_s3()
+    
+    return {
+        'statusCode': 200,
+        'body': 'Plotting Lambda executed successfully, and the plot has been uploaded to S3.'
+    }
